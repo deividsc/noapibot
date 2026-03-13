@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoapiBot - Mission Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#0a0a0a',
+                        surface: '#171717',
+                        border: '#262626',
+                        accent: '#3b82f6',
+                        accentDark: '#2563eb'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #ededed;
+        }
+
+        .glass-panel {
+            background: rgba(23, 23, 23, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid #262626;
+        }
+
+        .kanban-col {
+            min-height: 500px;
+            max-height: calc(100vh - 250px);
+            overflow-y: auto;
+            padding-right: 4px; /* Space for scrollbar */
+        }
+
+        .pulse-green {
+            animation: pulseGreen 2s infinite;
+        }
+
+        .pulse-yellow {
+            animation: pulseYellow 2s infinite;
+        }
+
+        @keyframes pulseGreen {
+            0% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+            }
+        }
+
+        @keyframes pulseYellow {
+            0% {
+                box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 6px rgba(250, 204, 21, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(250, 204, 21, 0);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden text-sm font-sans">
+
+    <!-- Header -->
+    <header class="glass-panel border-b px-6 py-3 flex justify-between items-center z-10 relative">
+        <div class="flex items-center gap-3">
+            <img src="./logo.jpg" alt="NoapiBot Logo"
+                class="w-10 h-10 rounded-lg object-cover object-center shadow-lg border-2 border-border bg-white">
+            <h1 class="text-xl font-bold tracking-tight">NoapiBot <span class="text-gray-400 font-normal">Mission
+                    Control</span></h1>
+        </div>
+        <div class="flex items-center gap-4 text-xs">
+            <div class="flex items-center gap-2">
+                <span id="ws-indicator" class="w-2 h-2 rounded-full bg-red-500"></span>
+                <span id="ws-text" class="text-gray-400">Desconectado</span>
+            </div>
+            <button class="bg-surface border border-border hover:bg-border px-3 py-1.5 rounded transition-colors"
+                onclick="addMockTask()">
+                + New Task
+            </button>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <div class="glass-panel border-b px-6 py-2 flex gap-4 z-10 relative text-sm shadow-[0_4px_10px_rgba(0,0,0,0.2)]">
+        <button id="tab-kanban" class="text-accent font-medium border-b-2 border-accent px-2 py-1 transition-colors"
+            onclick="switchTab('kanban')">Main Control</button>
+        <button id="tab-monitor"
+            class="text-gray-400 hover:text-gray-200 border-b-2 border-transparent px-2 py-1 transition-colors"
+            onclick="switchTab('monitor')">Bot Monitor</button>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Sidebar: Agents Fleet -->
+        <aside class="w-64 glass-panel border-r flex flex-col z-10 relative">
+            <div class="p-4 border-b border-border font-medium text-gray-300">
+                ACTIVE AGENTS (FLEET)
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3" id="agents-list">
+                <!-- Agent Cards generated here -->
+            </div>
+        </aside>
+
+        <!-- Main Content: Kanban & Logs -->
+        <main class="flex-1 flex flex-col bg-background relative overflow-hidden">
+
+            <!-- Kanban Board -->
+            <div id="view-kanban" class="flex-1 overflow-x-auto p-6 flex gap-6">
+                <!-- Column: INBOX -->
+                <div class="w-80 shrink-0 flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-medium text-gray-400">INBOX</h2>
+                        <span class="bg-surface px-2 py-0.5 rounded text-xs border border-border"
+                            id="count-inbox">0</span>
+                    </div>
+                    <div class="glass-panel rounded-lg p-2 flex-1 flex flex-col gap-2 kanban-col" id="col-inbox">
+                        <!-- Tasks go here -->
+                    </div>
+                </div>
+
+                <!-- Column: IN PROGRESS -->
+                <div class="w-80 shrink-0 flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-medium text-accent">IN PROGRESS</h2>
+                        <span class="bg-accent/20 text-accent px-2 py-0.5 rounded text-xs border border-accent/30"
+                            id="count-progress">0</span>
+                    </div>
+                    <div class="glass-panel rounded-lg p-2 flex-1 flex flex-col gap-2 kanban-col" id="col-progress">
+                    </div>
+                </div>
+
+                <!-- Column: DONE -->
+                <div class="w-80 shrink-0 flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-medium text-green-400">DONE</h2>
+                        <span
+                            class="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs border border-green-500/30"
+                            id="count-done">0</span>
+                    </div>
+                    <div class="glass-panel rounded-lg p-2 flex-1 flex flex-col gap-2 kanban-col" id="col-done">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bot Monitor View -->
+            <div id="view-monitor"
+                class="hidden flex-1 overflow-y-auto p-6 gap-6 content-start auto-rows-max grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 w-full">
+            </div>
+
+            <!-- Terminal / Live Feed (Bottom Panel) -->
+            <div class="h-48 glass-panel border-t flex flex-col shrink-0">
+                <div class="px-4 py-2 border-b border-border font-medium text-xs text-gray-400 flex justify-between">
+                    <span>LIVE EVENT STREAM</span>
+                    <button class="hover:text-white"
+                        onclick="document.getElementById('live-feed').innerHTML=''">Clear</button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 font-mono text-xs text-gray-300 flex flex-col gap-1"
+                    id="live-feed">
+                    <div>[SYSTEM] Mission Control Initialized...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- State Management ---
+        const agents = {
+            "NoApiBot": { status: "idle", emoji: "🤖", task: null, type: "Orchestrator", monitor: { sessionLen: 0, tokens: 0, cost: 0.0, limitType: "gemini", limitMax: 0.5 } },
+            "argos": { status: "idle", emoji: "🕵️", task: null, type: "Data Instigator", monitor: { sessionLen: 0, tokens: 0, reqs: 0, limitType: "alibaba", limitMax: 600 } },
+            "aegis": { status: "idle", emoji: "🛡️", task: null, type: "DevOps & QA", monitor: { sessionLen: 0, tokens: 0, cost: 0.0, limitType: "gemini", limitMax: 0.5 } },
+            "cipher": { status: "idle", emoji: "💻", task: null, type: "Backend Engineer", monitor: { sessionLen: 0, tokens: 0, reqs: 0, limitType: "alibaba", limitMax: 600 } },
+            "nova": { status: "idle", emoji: "✨", task: null, type: "Frontend & UI", monitor: { sessionLen: 0, tokens: 0, cost: 0.0, limitType: "gemini", limitMax: 0.5 } },
+            "sech": { status: "idle", emoji: "🔎", task: null, type: "Professional Searcher", monitor: { sessionLen: 0, tokens: 0, reqs: 0, limitType: "alibaba", limitMax: 600 } },
+            "Neruda": { status: "idle", emoji: "✍️", task: null, type: "Copywriter", monitor: { sessionLen: 0, tokens: 0, reqs: 0, limitType: "alibaba", limitMax: 600 } }
+        };
+
+        const tasks = [];
+
+        // --- UI Updaters ---
+        function switchTab(tabId) {
+            const kanbanView = document.getElementById('view-kanban');
+            const monitorView = document.getElementById('view-monitor');
+            const tabKanban = document.getElementById('tab-kanban');
+            const tabMonitor = document.getElementById('tab-monitor');
+
+            if (tabId === 'kanban') {
+                kanbanView.classList.remove('hidden');
+                kanbanView.classList.add('flex');
+                monitorView.classList.add('hidden');
+                monitorView.classList.remove('grid');
+
+                tabKanban.classList.replace('text-gray-400', 'text-accent');
+                tabKanban.classList.replace('border-transparent', 'border-accent');
+                tabMonitor.classList.replace('text-accent', 'text-gray-400');
+                tabMonitor.classList.replace('border-accent', 'border-transparent');
+            } else if (tabId === 'monitor') {
+                monitorView.classList.remove('hidden');
+                monitorView.classList.add('grid');
+                kanbanView.classList.add('hidden');
+                kanbanView.classList.remove('flex');
+
+                tabMonitor.classList.replace('text-gray-400', 'text-accent');
+                tabMonitor.classList.replace('border-transparent', 'border-accent');
+                tabKanban.classList.replace('text-accent', 'text-gray-400');
+                tabKanban.classList.replace('border-accent', 'border-transparent');
+
+                renderMonitor();
+            }
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}m ${s}s`;
+        }
+
+        function renderMonitor() {
+            const container = document.getElementById('view-monitor');
+            container.innerHTML = '';
+
+            for (const [name, data] of Object.entries(agents)) {
+                const isGemini = data.monitor.limitType === 'gemini';
+                const limitMax = data.monitor.limitMax;
+                const currentVal = isGemini ? data.monitor.cost : data.monitor.reqs;
+                const ratio = Math.min(currentVal / limitMax, 1);
+                const isAlert = ratio >= 0.9;
+                const barColor = ratio >= 1.0 ? 'bg-red-500' : (isAlert ? 'bg-yellow-500' : (isGemini ? 'bg-accent' : 'bg-green-500'));
+                const barDisplayVal = isGemini ? `$${currentVal.toFixed(3)}` : `${currentVal} reqs`;
+                const limitDisplayVal = isGemini ? `$${limitMax}` : `${limitMax} reqs`;
+                const usageLabel = isGemini ? 'Cost Limit' : 'Request Limit';
+
+                let limitWarning = '';
+                if (ratio >= 1.0) {
+                    limitWarning = `<div class="text-[10px] text-red-500 font-bold mt-2 font-mono uppercase animate-pulse">USAGE LIMIT REACHED</div>`;
+                }
+
+                container.innerHTML += `
+                    <div class="bg-surface border ${ratio >= 1.0 ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'border-border'} rounded-lg p-5 flex flex-col gap-3 transition-all duration-300 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="flex justify-between items-center border-b border-border pb-3 relative z-10">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded bg-background border border-border flex items-center justify-center text-xl shadow-inner">${data.emoji}</div>
+                                <div>
+                                    <div class="font-medium text-gray-200">${name}</div>
+                                    <div class="text-[10px] text-gray-500 uppercase tracking-wide">${data.type}</div>
+                                </div>
+                            </div>
+                            <div class="text-[10px] ${data.status === 'idle' ? 'text-gray-500' : 'text-yellow-400'} font-bold tracking-wider uppercase px-2 py-1 rounded bg-background border border-border">
+                                ${data.status}
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-3 relative z-10 mt-1">
+                            <div class="bg-background rounded p-2.5 border border-border">
+                                <div class="text-[9px] text-gray-500 uppercase tracking-widest mb-1 font-medium">Session</div>
+                                <div class="font-mono text-gray-300 font-medium text-sm">${formatTime(data.monitor.sessionLen)}</div>
+                            </div>
+                            <div class="bg-background rounded p-2.5 border border-border">
+                                <div class="text-[9px] text-gray-500 uppercase tracking-widest mb-1 font-medium">Tokens</div>
+                                <div class="font-mono ${ratio >= 1.0 ? 'text-red-400' : 'text-gray-300'} font-medium text-sm">${data.monitor.tokens.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2 relative z-10">
+                            <div class="flex justify-between text-[10px] text-gray-400 mb-1.5 uppercase tracking-wider font-medium">
+                                <span>${usageLabel} <span class="text-gray-600">(${data.monitor.limitType})</span></span>
+                                <span class="${ratio >= 1.0 ? 'text-red-400 font-bold' : ''}">${barDisplayVal} / ${limitDisplayVal}</span>
+                            </div>
+                            <div class="w-full h-2 bg-background rounded-full overflow-hidden border border-border shadow-inner">
+                                <div class="h-full ${barColor} transition-all duration-500" style="width: ${ratio * 100}%"></div>
+                            </div>
+                            ${limitWarning}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderAgents() {
+            const list = document.getElementById('agents-list');
+            list.innerHTML = '';
+
+            for (const [name, data] of Object.entries(agents)) {
+                let statusDot = 'bg-gray-500';
+                let statusText = 'IDLE';
+                let animation = '';
+
+                if (data.status === 'thinking' || data.status === 'researching' || data.status === 'coding') {
+                    statusDot = 'bg-yellow-400';
+                    statusText = data.status.toUpperCase();
+                    animation = 'pulse-yellow';
+                }
+
+                const card = `
+                    <div class="bg-surface border border-border rounded-lg p-3 hover:border-gray-500 transition-colors cursor-pointer group">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xl">${data.emoji}</span>
+                                <div>
+                                    <div class="font-medium text-gray-200 group-hover:text-white">${name}</div>
+                                    <div class="text-[10px] text-gray-500 uppercase tracking-wider">${data.type}</div>
+                                </div>
+                            </div>
+                            <div class="w-2 h-2 rounded-full ${statusDot} ${animation}"></div>
+                        </div>
+                        <div class="text-xs text-gray-400 truncate">
+                            ${data.task ? `<span class="text-accent">${data.task}</span>` : `<span class="italic text-gray-600">${statusText}</span>`}
+                        </div>
+                    </div>
+                `;
+                list.innerHTML += card;
+            }
+        }
+
+        function renderKanban() {
+            const cols = { inbox: [], progress: [], done: [] };
+
+            tasks.forEach(t => {
+                if (cols[t.status]) cols[t.status].push(t);
+            });
+
+            for (const [status, tList] of Object.entries(cols)) {
+                document.getElementById(`count-${status}`).innerText = tList.length;
+                const container = document.getElementById(`col-${status}`);
+                container.innerHTML = '';
+
+                tList.forEach(t => {
+                    const ownerBadge = t.owner ? `<div class="mt-2 text-[10px] bg-border px-2 py-1 rounded w-max inline-flex items-center gap-1">👤 ${t.owner}</div>` : '';
+
+                    container.innerHTML += `
+                        <div class="bg-surface border border-border rounded-lg p-3 shadow-sm hover:border-gray-500 cursor-grab active:cursor-grabbing">
+                            <div class="flex justify-between items-start mb-1">
+                                <span class="text-[10px] font-mono text-gray-500">${t.id}</span>
+                            </div>
+                            <div class="font-medium text-gray-200 mb-1">${t.title}</div>
+                            <div class="text-xs text-gray-400 line-clamp-2">${t.desc}</div>
+                            ${ownerBadge}
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        function logEvent(msg, type = "info") {
+            const feed = document.getElementById('live-feed');
+            const time = new Date().toLocaleTimeString();
+            let color = "text-gray-400";
+            if (type === "error") color = "text-red-400";
+            if (type === "success") color = "text-green-400";
+            if (type === "agent") color = "text-accent";
+
+            feed.innerHTML += `<div class="${color}">[${time}] ${msg}</div>`;
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        // --- WebSocket Logic ---
+        let ws; // Global WebSocket reference
+        function connect() {
+            ws = new WebSocket('ws://localhost:8765');
+            const wsInd = document.getElementById('ws-indicator');
+            const wsText = document.getElementById('ws-text');
+
+            ws.onopen = () => {
+                wsInd.className = 'w-2 h-2 rounded-full bg-green-500 pulse-green';
+                wsText.innerText = "Conectado al Gateway";
+                logEvent("WebSocket conectado exitosamente.", "success");
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Extract agent or fallback
+                    const agentName = data.agent || "NoApiBot";
+
+                    // Update agent state
+                    if (!agents[agentName]) {
+                        agents[agentName] = { status: "idle", emoji: "🤖", task: null, type: "Dynamic", monitor: { sessionLen: 0, tokens: 0, cost: 0.0, limitType: "gemini", limitMax: 0.5 } };
+                    }
+
+                    // Track previous status to prevent log spam
+                    const statusChanged = agents[agentName].status !== data.status || agents[agentName].task !== data.task;
+                    
+                    agents[agentName].status = data.status;
+                    agents[agentName].task = data.task || null;
+                    if (data.monitor) {
+                        agents[agentName].monitor = data.monitor;
+                    }
+
+                    // Update Kanban if task is present
+                    if (data.task && data.status !== 'idle') {
+                        // Find or create task
+                        let t = tasks.find(t => t.title === data.task);
+                        if (!t) {
+                            t = { id: `TSK-${Math.floor(Math.random() * 1000)}`, title: data.task, desc: "Generado automáticamente", status: "progress", owner: agentName };
+                            tasks.push(t);
+                            logEvent(`Nueva tarea registrada: ${data.task}`);
+                        } else {
+                            t.status = "progress";
+                            t.owner = agentName;
+                        }
+                    } else if (data.status === 'idle') {
+                        // Mark agent tasks as done when they go idle
+                        tasks.filter(t => t.owner === agentName && t.status === 'progress').forEach(t => {
+                            t.status = 'done';
+                            logEvent(`Tarea completada: ${t.title}`, "success");
+                        });
+                    }
+
+                    if (statusChanged) {
+                        logEvent(`[${agentName}] Cambio de estado -> ${data.status.toUpperCase()} ${data.task ? `(${data.task})` : ''}`, "agent");
+                    }
+
+                    renderAgents();
+                    renderKanban();
+
+                    // Solo renderizar el Monitor si la pestaña esta activa para evitar trabajo innecesario
+                    const monitorView = document.getElementById('view-monitor');
+                    if (!monitorView.classList.contains('hidden')) {
+                        renderMonitor();
+                    }
+
+                } catch (e) { console.error(e); }
+            };
+
+            ws.onclose = () => {
+                wsInd.className = 'w-2 h-2 rounded-full bg-red-500';
+                wsText.innerText = "Reconectando...";
+                logEvent("Conexión perdida. Intentando reconectar en 3s...", "error");
+                setTimeout(connect, 3000);
+            };
+        }
+
+        // Init
+        renderAgents();
+        renderKanban();
+        renderMonitor();
+        connect();
+
+        function addMockTask() {
+            const title = prompt("Asignar nueva misión al Orquestador (NoApiBot):");
+            if (title && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'newTask', title: title }));
+                logEvent(`Misión enviada al Director: ${title}`);
+            } else if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("No hay conexión con el backend.");
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,97 @@
+# ─── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Environment & Secrets ────────────────────────────
+.env
+*.enc
+.encryption_key
+
+# ─── Private User Data ───────────────────────────────
+noapi_data/
+data/sessions/*.json
+data/persona.txt
+data/topic_agents.json
+data/reminders.json
+data/memory.json
+data/bot_updates.log
+
+# ─── Workspace (user projects) ───────────────────────
+workspace/
+
+# ─── Legacy / Old Monolith Files ─────────────────────
+telegram_opencode_bot.py
+agent_tools.py
+tts_engine.py
+whatsapp_handler.py
+requirements_bot.txt
+
+# ─── Test & Debug Scripts ────────────────────────────
+test_*.py
+check_*.py
+analyze_*.py
+parse_html.py
+temp_*.py
+
+# ─── Debug documentation ────────────────────────────
+debugging_context.md
+mcp-bot-upgrade.md
+github-opensource-noapibot.md
+full_text.txt
+models_list.txt
+
+# ─── Batch Scripts (local paths inside) ─────────────
+*.bat
+
+# ─── Binary / Media / Dump Files ────────────────────
+*.ogg
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.docx
+*.html
+!assets/logo.jpg
+!dashboard/index.html
+!README.md
+*.log
+
+# ─── External Tools ─────────────────────────────────
+whatsapp_bridge/
+node_modules/
+package-lock.json
+package.json
+
+# ─── Local Config Directories ───────────────────────
+.claude/
+.gemini/
+.agent/
+.vscode/
+.idea/
+memory/
+scripts/
+outputs/
+/tmp/
+
+# ─── Docker (user-specific) ─────────────────────────
+docker-compose.override.yml
+
+# ─── OS ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ─── Skill-specific ephemeral files ─────────────────
+**/cookies.json
+data/skills/notebooklm-mcp/*.jpg
+data/skills/browser-vision/*.jpg
+data/skills/browser-vision/*.png
+
+# ─── Start script (contains local paths) ────────────
+start.bat
