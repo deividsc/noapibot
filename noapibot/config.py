@@ -103,10 +103,14 @@ BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 # ─── Rate Limiting ────────────────────────────────────
 MCP_COOLDOWN_SECONDS = float(os.environ.get("NOAPIBOT_MCP_COOLDOWN", "3.5"))
 
+# ─── Engram KV ────────────────────────────────────────
+ENGRAM_URL = os.environ.get("ENGRAM_URL", "")
+
 # ─── Startup Secret Validation (SEC-05/GCP) ──────────
 # Fail fast if required secrets are missing — prevents silent failures in Cloud Run.
 _REQUIRED_SECRETS = {
     "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+    "ENGRAM_URL": ENGRAM_URL,
 }
 
 def validate_secrets() -> None:

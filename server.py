@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from noapibot.config import validate_secrets, AGENTS_DIR, DEFAULT_MODEL
 from noapibot.core import run_with_context
-from noapibot.memory import load_memory, save_memory
+from noapibot.memory import load_memory_async, save_memory_async
 import noapibot.state as state
 
 # ── Optional WebSocket dashboard (disabled if no DASHBOARD_API_KEY) ───────────
@@ -90,15 +90,15 @@ async def run_task(req: TaskRequest, authorization: str | None = Header(default=
     if req.context:
         user_msg = f"{req.task}\n\nContexto adicional: {req.context}"
 
-    mem = load_memory(req.session_id)
+    from datetime import datetime
+    mem = await load_memory_async(req.session_id)
     response = await run_with_context(
         state.current_model,
         user_msg,
         session_id=req.session_id,
     )
-    from datetime import datetime
     mem.append({"role": "user", "text": user_msg, "ts": datetime.now().isoformat()})
     mem.append({"role": "assistant", "text": response, "ts": datetime.now().isoformat()})
-    save_memory(mem, req.session_id)
+    await save_memory_async(mem, req.session_id)
 
     return TaskResponse(session_id=req.session_id, response=response)

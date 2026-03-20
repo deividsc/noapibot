@@ -14,7 +14,7 @@ from noapibot.config import (
     GLOBAL_RULES_DIR, MAX_CONTEXT_MSGS, MCP_COOLDOWN_SECONDS,
 )
 from noapibot.memory import (
-    load_memory, save_memory, load_qmd, load_persona,
+    load_memory_async, save_memory_async, load_qmd_async, load_persona,
 )
 from noapibot.websocket import broadcast_status, agent_metrics, bg_tasks
 import noapibot.state as state
@@ -164,7 +164,7 @@ async def run_with_context(model, user_msg, memory_override=None, depth=0, sessi
             model = m_val
 
     persona = raw_persona_text + "\n\n" + agent_tools.TOOL_INSTRUCTIONS + agent_tools.list_mcp_servers()
-    memory = memory_override if memory_override is not None else load_memory(session_id)
+    memory = memory_override if memory_override is not None else await load_memory_async(session_id)
 
     # Build system instruction
     protocol_parts = [
@@ -193,7 +193,7 @@ async def run_with_context(model, user_msg, memory_override=None, depth=0, sessi
     ]
 
     # Inject QMD (silent context)
-    qmd_content = load_qmd(session_id)
+    qmd_content = await load_qmd_async(session_id)
     if qmd_content:
         sys_parts.append(f"[CONOCIMIENTO LATENTE DEL PROYECTO]: \n{qmd_content}\n")
 
