@@ -59,8 +59,8 @@ WORKFLOWS_DIR = AGENTS_BASE_DIR / "workflows"
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
 
 # ─── Model Defaults ──────────────────────────────────
-DEFAULT_MODEL = os.environ.get("NOAPIBOT_DEFAULT_MODEL", "qwen3.5-plus")
-DEFAULT_ENGINE = os.environ.get("NOAPIBOT_DEFAULT_ENGINE", "api")
+DEFAULT_MODEL = os.environ.get("NOAPIBOT_DEFAULT_MODEL", "claude-sonnet-4-6")
+DEFAULT_ENGINE = os.environ.get("NOAPIBOT_DEFAULT_ENGINE", "opencode")
 MAX_CONTEXT_MSGS = int(os.environ.get("NOAPIBOT_MAX_CONTEXT", "20"))
 EXEC_TIMEOUT = int(os.environ.get("NOAPIBOT_EXEC_TIMEOUT", "30"))
 AUTO_OPEN_DASHBOARD = os.environ.get("NOAPIBOT_AUTO_OPEN_DASHBOARD", "true").lower() == "true"

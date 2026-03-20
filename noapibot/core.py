@@ -14,7 +14,7 @@ from noapibot.config import (
     GLOBAL_RULES_DIR, MAX_CONTEXT_MSGS, MCP_COOLDOWN_SECONDS,
 )
 from noapibot.memory import (
-    load_memory, save_memory, load_qmd, load_persona, load_topic_agents,
+    load_memory, save_memory, load_qmd, load_persona,
 )
 from noapibot.websocket import broadcast_status, agent_metrics, bg_tasks
 import noapibot.state as state
@@ -75,14 +75,9 @@ async def run_opencode(model, prompt, attachment=None, engine_override=None, sys
     elif engine == "gemini":
         args = ["gemini", "ask", "--no-stream"]
     else:
-        # Resolve fully qualified model name for opencode CLI
-        fq_model = model
-        if "qwen" in model.lower() or "glm" in model.lower() or "kimi" in model.lower() or "minimax" in model.lower():
-            if "/" not in model:
-                fq_model = f"bailian-coding-plan/{model}"
-
-        args = ["docker", "exec", "-i", "-w", "/root/.openclaw/workspace",
-                "openclaw-container", "opencode", "run", "-m", fq_model]
+        # opencode installed directly in container (GCP — no Docker-in-Docker)
+        fq_model = model  # Anthropic models: "claude-sonnet-4-6", "claude-haiku-4-5"
+        args = ["opencode", "run", "-m", fq_model]
         if attachment:
             args.extend(["-f", attachment])
 
@@ -365,200 +360,54 @@ async def _handle_tool(tool_fn, query, status_label, result_label, recurse_promp
     )
 
 
-# ─── Helper: Delegation Handler ──────────────────────
+# ─── Helper: Delegation Handler (GCP — in-process, no Telegram) ──────────────
 
 async def _handle_delegation(target_agent, message_to_send, current_agent_name, model, memory,
                              raw_response, depth, session_id, max_depth, chat_id, thread_id):
-    """Handle CALL_MSG delegation to another agent via Telegram topics."""
-    if not chat_id:
-        return "Error: chat_id no está disponible en este contexto para enviar el mensaje."
-
-    topic_agents = load_topic_agents()
-
+    """
+    Delegate a task to another agent by calling run_with_context directly.
+    No Telegram — the target agent runs in the same process and returns inline.
+    """
     # Anti-loop check
     if target_agent.lower() == current_agent_name.lower():
-        print(f"⚠️ Anti-Loop: Intentando delegar a sí mismo ({current_agent_name}).")
+        print(f"⚠️ Anti-Loop: {current_agent_name} intentó delegarse a sí mismo.")
         memory.append({"role": "assistant", "text": raw_response, "ts": datetime.now().isoformat()})
-        memory.append({"role": "tool", "text": f"ERROR: No puedes usar [CALL_MSG] para hablar contigo mismo ({current_agent_name}). Usa tus herramientas locales.", "ts": datetime.now().isoformat()})
+        memory.append({"role": "tool", "text": f"ERROR: No puedes delegar a ti mismo ({current_agent_name}).", "ts": datetime.now().isoformat()})
         return await run_with_context(
-            model, "Error de lógica: Intentaste delegar a ti mismo. Usa tus herramientas propias.",
-            memory_override=memory, depth=depth + 1, session_id=session_id,
-            max_depth=max_depth, chat_id=chat_id, thread_id=thread_id
+            model, "Error: Intentaste delegarte a ti mismo. Usa tus herramientas propias.",
+            memory_override=memory, depth=depth + 1, session_id=session_id, max_depth=max_depth,
         )
 
-    # Map aliases
+    # Alias resolution
     aliases = {
         "project-planner": "noapibot", "planner": "noapibot", "planificador": "noapibot", "noapi": "noapibot",
         "investigador": "argos", "auditor": "argos", "coder": "cipher", "programador": "cipher"
     }
-    canonical_target = aliases.get(target_agent.lower(), target_agent.lower())
+    canonical = aliases.get(target_agent.lower(), target_agent.lower())
 
-    target_thread_id = None
-    for tid, aname in topic_agents.items():
-        if aname.lower() == canonical_target:
-            target_thread_id = tid
-            break
+    # Verify agent exists
+    agent_file = AGENTS_DIR / f"{canonical}.md"
+    if not agent_file.exists():
+        return f"Error: Agente '{target_agent}' no encontrado en {AGENTS_DIR}. Agentes disponibles: {[f.stem for f in AGENTS_DIR.glob('*.md')]}"
 
-    if not target_thread_id:
-        print(f"❌ Agente '{target_agent}' no encontrado en topic_agents.json")
-        return f"Error: No se encontró ningún topic asignado al agente '{target_agent}'. Verifica el nombre."
+    print(f"✉️ Delegando a '{canonical}' desde '{current_agent_name}'...")
+    await broadcast_status("thinking", f"Delegando a {canonical}...", agent=current_agent_name)
 
+    # Run target agent in-process with its own session
+    target_session = f"agent_{canonical}"
     try:
-        # Send visible message to Telegram
-        try:
-            await state.bot_app.bot.send_message(
-                chat_id=chat_id, message_thread_id=int(target_thread_id),
-                text=f"📥 **Mensaje de {current_agent_name}**\n\n{message_to_send}",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            await state.bot_app.bot.send_message(
-                chat_id=chat_id, message_thread_id=int(target_thread_id),
-                text=f"📥 Mensaje de {current_agent_name} (Plain):\n\n{message_to_send}"
-            )
-
-        print(f"✅ Mensaje enviado a {target_agent} en topic {target_thread_id}")
-
-        # Save to target agent memory and dispatch background processing
-        target_session = f"topic_{target_thread_id}"
-        target_mem = load_memory(target_session)
-        target_mem.append({
-            "role": "user",
-            "text": f"[Mensaje interno de {current_agent_name}]: {message_to_send}",
-            "ts": datetime.now().isoformat()
-        })
-        save_memory(target_mem, target_session)
-
-        # Dispatch background task
-        task = asyncio.create_task(
-            _process_delegated_task(target_agent, target_thread_id, target_session,
-                                   message_to_send, current_agent_name, thread_id, chat_id)
+        result = await run_with_context(
+            model,
+            f"[Mensaje interno de {current_agent_name}]: {message_to_send}",
+            session_id=target_session,
+            depth=0,
+            max_depth=max_depth,
         )
-        bg_tasks.add(task)
-        task.add_done_callback(bg_tasks.discard)
-
-        return f"Mensaje enviado exitosamente al agente {target_agent}."
-
     except Exception as e:
-        print(f"❌ Error al enviar mensaje: {e}")
-        return f"Error al enviar mensaje a {target_agent}: {e}"
+        result = f"Error al ejecutar agente '{canonical}': {e}"
+
+    print(f"✅ '{canonical}' completó la delegación.")
+    await broadcast_status("idle", "", agent=canonical)
+    return result
 
 
-async def _process_delegated_task(t_agent, t_tid, t_session, msg, sender_name, origin_tid, chat_id):
-    """Background task: target agent processes the delegated message."""
-    await asyncio.sleep(2)
-    try:
-        print(f"🧠 Despertando a {t_agent} para procesar tarea de {sender_name}...")
-        status_msg = await state.bot_app.bot.send_message(
-            chat_id=chat_id, message_thread_id=int(t_tid),
-            text=f"⏳ {t_agent} procesando mensaje de {sender_name}..."
-        )
-
-        target_reply = await run_with_context(
-            state.current_model,
-            f"[Mensaje interno de {sender_name}]: {msg}",
-            session_id=t_session, chat_id=chat_id
-        )
-
-        target_mem = load_memory(t_session)
-        target_mem.append({"role": "assistant", "text": target_reply, "ts": datetime.now().isoformat()})
-        save_memory(target_mem, t_session)
-
-        if len(target_reply) > 4000:
-            await status_msg.delete()
-            for i in range(0, len(target_reply), 4000):
-                await state.bot_app.bot.send_message(chat_id=chat_id, message_thread_id=int(t_tid), text=target_reply[i:i+4000])
-        else:
-            await status_msg.edit_text(target_reply)
-
-        await broadcast_status("idle", "", agent=t_agent)
-        print(f"✅ {t_agent} terminó de procesar mensaje de {sender_name}.")
-
-        # Callback to sender
-        if sender_name:
-            await _callback_to_sender(t_agent, sender_name, target_reply, origin_tid, chat_id)
-
-    except Exception as e:
-        print(f"❌ Error en tarea delegada a {t_agent}: {e}")
-        await broadcast_status("idle", "", agent=t_agent)
-
-
-async def _callback_to_sender(t_agent, sender_name, target_reply, origin_tid, chat_id):
-    """Return the delegated result back to the sender agent."""
-    callback_msg = (
-        f"[Respuesta automática de {t_agent}]: Tarea finalizada.\n\n"
-        f"Resultado/Reporte de {t_agent}:\n{target_reply}\n\n"
-        "REGLA CRÍTICA: NO resumas el trabajo del agente (ya es visible arriba). "
-        "Solo confirma que terminó y ofrece sugerencias de próximos pasos o preguntas de seguimiento. "
-        "Responde de forma natural SIN negritas (**)."
-    )
-    print(f"🔄 Devolviendo resultado de {t_agent} a {sender_name}...")
-
-    s_session = ""
-    sender_tid = origin_tid
-
-    if sender_name == "NoApiBot":
-        s_session = "default"
-    else:
-        t_agents = load_topic_agents()
-        for tid, aname in t_agents.items():
-            if aname.lower() == sender_name.lower():
-                sender_tid = tid
-                break
-        if sender_tid:
-            s_session = f"topic_{sender_tid}"
-        elif sender_name == "NoApiBot":
-            s_session = "default"
-
-    if not s_session:
-        return
-
-    try:
-        await state.bot_app.bot.send_message(
-            chat_id=chat_id,
-            message_thread_id=int(sender_tid) if sender_tid else None,
-            text=f"📥 **Retorno Automático de {t_agent}**\n\n_El agente ha completado la tarea. {sender_name} evaluando resultados..._",
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-
-    s_mem = load_memory(s_session)
-    s_mem.append({"role": "user", "text": callback_msg, "ts": datetime.now().isoformat()})
-    save_memory(s_mem, s_session)
-
-    async def eval_callback():
-        await asyncio.sleep(2)
-        await broadcast_status("thinking", f"Evaluando retorno de {t_agent}...", agent=sender_name)
-        eval_reply = await run_with_context(state.current_model, callback_msg, session_id=s_session, chat_id=chat_id)
-
-        s_m = load_memory(s_session)
-        s_m.append({"role": "assistant", "text": eval_reply, "ts": datetime.now().isoformat()})
-        save_memory(s_m, s_session)
-
-        if len(eval_reply) > 4000:
-            for i in range(0, len(eval_reply), 4000):
-                await state.bot_app.bot.send_message(chat_id=chat_id, message_thread_id=int(sender_tid) if sender_tid else None, text=eval_reply[i:i+4000])
-        else:
-            await state.bot_app.bot.send_message(chat_id=chat_id, message_thread_id=int(sender_tid) if sender_tid else None, text=eval_reply)
-
-        await broadcast_status("idle", "", agent=sender_name)
-        print(f"✅ Evaluación de {sender_name} completada.")
-
-    cb_task = asyncio.create_task(eval_callback())
-    bg_tasks.add(cb_task)
-    cb_task.add_done_callback(bg_tasks.discard)
-
-
-# ─── Utility ──────────────────────────────────────────
-
-async def send_response(update, status_msg, text):
-    """Send a response to Telegram, handling long messages by splitting."""
-    if not text.strip():
-        text = "Sin respuesta."
-    if len(text) > 4000:
-        await status_msg.delete()
-        for i in range(0, len(text), 4000):
-            await update.message.reply_text(text[i:i+4000])
-    else:
-        await status_msg.edit_text(text)

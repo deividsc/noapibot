@@ -1,26 +1,32 @@
-FROM ubuntu:22.04
+FROM python:3.12-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# System dependencies
-RUN apt-get update && apt-get install -y \
-    curl gnupg build-essential git unzip sudo nano wget ca-certificates \
+# System deps + Node.js 22 (for opencode CLI)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl gnupg ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 22.x LTS
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs
+# Install opencode CLI (model manager — supports Anthropic via ANTHROPIC_API_KEY)
+# Docs: https://opencode.ai — set ANTHROPIC_API_KEY to use Claude models
+RUN npm install -g opencode-ai
 
-# Create clawdbot directory
-RUN mkdir -p /root/.clawdbot
+WORKDIR /app
 
-# Working directory
-WORKDIR /root
+# Python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Memory Kit (will be mounted as volume instead)
-# COPY memory/ /root/.clawdbot/memory/
+# App source
+COPY . .
 
-EXPOSE 18789
+# Persistent data dir (mounted to Cloud Storage FUSE or local volume)
+RUN mkdir -p /data/sessions /data/agents /data/skills /data/personas
 
-# Keep container running for interactive use
-CMD ["bash"]
+ENV NOAPIBOT_DATA_DIR=/data
+ENV NOAPIBOT_DEFAULT_ENGINE=opencode
+ENV PYTHONUNBUFFERED=1
+
+# Cloud Run sets PORT; default to 8080
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8080}"]

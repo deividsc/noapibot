@@ -102,9 +102,9 @@ INSTRUCCIONES CRÍTICAS DE LÍMITE:
 6. MANTÉN EL QMD EXTREMADAMENTE CONCISO. NO SUPERES LAS 800 PALABRAS.
 7. NO uses saludos ni explicaciones. Devuelve ÚNICAMENTE el código Markdown consolidado.
 """
-    # Use Gemini Flash for cheap/fast summarization
+    # Use Haiku for cheap/fast summarization (GCP — Anthropic via opencode)
     from noapibot.core import run_opencode
-    new_qmd = await run_opencode("google/antigravity-gemini-3-flash", prompt)
+    new_qmd = await run_opencode("claude-haiku-4-5", prompt)
 
     # Clean markdown fences if the LLM wrapped the output
     if new_qmd.startswith('```'):
