@@ -42,7 +42,11 @@ async def run_opencode(model, prompt, attachment=None, engine_override=None, sys
         args = ["gemini", "ask", "--no-stream"]
     else:
         # opencode installed directly in container (GCP — no Docker-in-Docker)
-        fq_model = model  # Anthropic models: "claude-sonnet-4-6", "claude-haiku-4-5"
+        # opencode expects "provider/model" format: anthropic/claude-sonnet-4-6
+        if "/" not in model:
+            fq_model = f"anthropic/{model}"
+        else:
+            fq_model = model
         args = ["opencode", "run", "-m", fq_model]
         if attachment:
             args.extend(["-f", attachment])
