@@ -7,10 +7,8 @@ import asyncio
 import time
 from datetime import datetime
 
-import google.generativeai as genai
-
 from noapibot.config import (
-    ANTIGRAVITY_API_KEY, AGENTS_DIR, SKILLS_DIR, ANTIGRAVITY_SKILLS_DIR,
+    AGENTS_DIR, SKILLS_DIR, ANTIGRAVITY_SKILLS_DIR,
     GLOBAL_RULES_DIR, MAX_CONTEXT_MSGS, MCP_COOLDOWN_SECONDS,
 )
 from noapibot.memory import (
@@ -22,43 +20,11 @@ import noapibot.state as state
 # ─── Regex ────────────────────────────────────────────
 ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|(> build [^\n]+)|(\$ [^\n]+)')
 
-# ─── Gemini SDK Init ─────────────────────────────────
-if ANTIGRAVITY_API_KEY:
-    genai.configure(api_key=ANTIGRAVITY_API_KEY)
-
 # ─── LLM Runner ──────────────────────────────────────
 
 async def run_opencode(model, prompt, attachment=None, engine_override=None, system_instruction=None):
     """Execute a prompt against an LLM (Gemini API, OpenCode CLI, Claude CLI, or Gemini CLI)."""
     engine = engine_override or state.current_engine
-
-    # Auto-switch to opencode for non-Google models
-    if engine == "api":
-        lower_model = model.lower()
-        is_google = "gemini" in lower_model or "flash" in lower_model or "pro" in lower_model
-        if not is_google:
-            print(f"🔄 Auto-routing '{model}' to 'opencode' engine (Not native Google).")
-            engine = "opencode"
-
-    if engine == "api":
-        # Official Gemini API via SDK
-        print(f"🟢 [API] Ejecutando {model} (Google SDK)...")
-        api_model_name = "gemini-2.5-pro"
-        if "pro" in model.lower():
-            api_model_name = "gemini-2.5-pro"
-        if "flash" in model.lower():
-            api_model_name = "gemini-3-flash-preview"
-
-        try:
-            model_kw = {}
-            if system_instruction:
-                model_kw["system_instruction"] = system_instruction
-            model_obj = genai.GenerativeModel(api_model_name, **model_kw)
-            response = await model_obj.generate_content_async(prompt)
-            text = response.text or "Sin respuesta de la API."
-            return re.sub(r'\n\s*\n', '\n\n', text).strip()
-        except Exception as e:
-            return f"❌ Error en Gemini API: {str(e)}"
 
     final_prompt = prompt
     if system_instruction and engine != "api":

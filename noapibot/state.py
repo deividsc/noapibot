@@ -3,7 +3,6 @@ Shared mutable state for NoApiBot.
 Isolated to prevent circular imports between modules.
 """
 import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from noapibot.config import DEFAULT_MODEL, DEFAULT_ENGINE
 
@@ -11,9 +10,6 @@ from noapibot.config import DEFAULT_MODEL, DEFAULT_ENGINE
 current_model = DEFAULT_MODEL
 current_engine = DEFAULT_ENGINE
 active_skills = []  # list of loaded skill names
-
-# ─── Scheduler ────────────────────────────────────────
-scheduler = AsyncIOScheduler()
 
 # ─── Rate Limiter ─────────────────────────────────────
 mcp_semaphore = asyncio.Semaphore(1)
