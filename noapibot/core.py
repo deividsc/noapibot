@@ -110,8 +110,9 @@ async def run_opencode(model, prompt, attachment=None, engine_override=None, sys
     else:
         print(f"🟢 Ejecutando {model} (Engine: {engine})...")
         if engine != "opencode":
-            proc = await asyncio.create_subprocess_shell(
-                " ".join(args), stdin=asyncio.subprocess.PIPE,
+            # Use exec (not shell) to avoid shell injection (SEC-02/GCP)
+            proc = await asyncio.create_subprocess_exec(
+                *args, stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         else:
@@ -268,7 +269,7 @@ async def run_with_context(model, user_msg, memory_override=None, depth=0, sessi
     # ─── Tool Interception ────────────────────────────
     search_match = re.search(r'\[CALL_SEARCH:\s*(.*?)\s*\]', raw_response, re.DOTALL)
     pplx_match = re.search(r'\[CALL_PPLX:\s*(.*?)\s*\]', raw_response, re.DOTALL)
-    exec_match = re.search(r'\[CALL_EXEC:\s*(.*?)\s*\]', raw_response, re.DOTALL)
+    exec_match = None  # CALL_EXEC disabled — arbitrary code execution removed (SEC-01/GCP)
     read_match = re.search(r'\[CALL_READ:\s*(.*?)\s*\]', raw_response, re.DOTALL)
     mcp_match = re.search(r'\[CALL_MCP:\s*(.*?)\s*\]', raw_response, re.DOTALL)
     think_match = re.search(r'\[CALL_THINK:\s*(.*?)\s*\]', raw_response, re.DOTALL)
@@ -306,15 +307,6 @@ async def run_with_context(model, user_msg, memory_override=None, depth=0, sessi
             agent_tools.execute_perplexica, pplx_match.group(1).strip(),
             "Investigando datos (Perplexica)", "RESULTADO DE PERPLEXICA DOCs/WEB",
             "Revisa los datos obtenidos por tu motor de investigación Perplexica y dame la síntesis final",
-            current_agent_name, model, memory, raw_response, depth, session_id, max_depth, chat_id, thread_id
-        )
-
-    # ─── CALL_EXEC ────────────────────────────────────
-    elif exec_match:
-        return await _handle_tool(
-            agent_tools.execute_code, exec_match.group(1).strip(),
-            "Ejecutando script de Python", "STD/ERR AL EJECUTAR EL SCRIPT",
-            "El sistema ejecutó el código Python. Revisa el STDOUT/STDERR y formula la respuesta final",
             current_agent_name, model, memory, raw_response, depth, session_id, max_depth, chat_id, thread_id
         )
 

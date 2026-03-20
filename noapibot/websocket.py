@@ -4,10 +4,15 @@ Handles real-time status broadcasting and metrics tracking.
 """
 import json
 import asyncio
+import os
 import websockets
 from datetime import datetime
 
 from noapibot.config import DEFAULT_MODEL
+
+# API key required for WebSocket connections (SEC-03/GCP)
+# Set DASHBOARD_API_KEY env var; if unset, WebSocket is disabled entirely.
+_DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
 
 # ─── State ────────────────────────────────────────────
 connected_clients = set()
@@ -16,6 +21,20 @@ bg_tasks = set()
 
 
 async def ws_handler(websocket, path="/"):
+    # Require API key as first message: {"type": "auth", "key": "..."}  (SEC-03/GCP)
+    if not _DASHBOARD_API_KEY:
+        await websocket.close(1008, "Dashboard WebSocket disabled (no DASHBOARD_API_KEY set)")
+        return
+    try:
+        auth_raw = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        auth_data = json.loads(auth_raw)
+        if auth_data.get("type") != "auth" or auth_data.get("key") != _DASHBOARD_API_KEY:
+            await websocket.close(1008, "Unauthorized")
+            return
+    except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        await websocket.close(1008, "Auth timeout or invalid payload")
+        return
+
     connected_clients.add(websocket)
     try:
         await websocket.send(json.dumps({"status": "idle", "task": ""}))

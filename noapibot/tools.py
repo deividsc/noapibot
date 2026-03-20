@@ -60,55 +60,30 @@ async def execute_search(query: str) -> str:
         return f"Error en la herramienta de búsqueda: {e}"
 
 
-async def execute_code(code: str) -> str:
-    """Execute Python code locally in a sandboxed environment."""
-    import tempfile
-    from pathlib import Path
-
-    try:
-        if code.startswith('```'):
-            lines = code.split('\n')
-            if lines[0].startswith('```'):
-                lines = lines[1:]
-            if lines[-1].startswith('```'):
-                lines = lines[:-1]
-            code = '\n'.join(lines)
-
-        fd, path = tempfile.mkstemp(suffix='.py')
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(code)
-
-        proc = await asyncio.create_subprocess_exec(
-            "python", path,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-
-        try:
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=10.0)
-        except asyncio.TimeoutError:
-            proc.kill()
-            out, err = await proc.communicate()
-            err += b"\n[TIMEOUT: El script tardo mas de 10s y fue abortado.]"
-
-        os.unlink(path)
-
-        result = ""
-        if out:
-            result += f"STDOUT:\n{out.decode('utf-8')}\n"
-        if err:
-            result += f"STDERR:\n{err.decode('utf-8')}\n"
-
-        return result.strip() if result.strip() else "[Script ejecutado sin producir salida en consola (stdout)]"
-    except Exception as e:
-        return f"Error crítico al ejecutar código: {e}"
-
 
 async def execute_read_file(path: str) -> str:
-    """Read a local file and return its content."""
+    """Read a local file and return its content.
+    Only files inside ALLOWED_READ_DIRS (SEC-04/GCP) can be accessed.
+    """
+    import os
     from pathlib import Path
 
+    # Allowlist of directories readable by agents (SEC-04/GCP)
+    # DATA_DIR is the only safe dir in Cloud Run; extend via env var if needed.
+    from noapibot.config import DATA_DIR
+    raw_allowed = os.environ.get("NOAPIBOT_READ_DIRS", "")
+    allowed_dirs = [Path(d).resolve() for d in raw_allowed.split(":") if d] or [DATA_DIR.resolve()]
+
     try:
-        p = Path(path.strip())
+        p = Path(path.strip()).resolve()  # resolve symlinks / .., no traversal
+
+        # Enforce allowlist
+        if not any(str(p).startswith(str(allowed)) for allowed in allowed_dirs):
+            return (
+                f"Acceso denegado: '{path}' está fuera de los directorios permitidos. "
+                f"Dirs permitidos: {[str(d) for d in allowed_dirs]}"
+            )
+
         if not p.exists():
             return f"Error: Archivo no encontrado en la ruta {path}"
         if not p.is_file():
@@ -117,7 +92,7 @@ async def execute_read_file(path: str) -> str:
         content = p.read_text(encoding='utf-8', errors='replace')
         max_chars = 15000
         if len(content) > max_chars:
-            content = content[:max_chars] + f"\n\n... [Truncado a {max_chars} chars. Usa CALL_EXEC para extraer líneas específicas]"
+            content = content[:max_chars] + f"\n\n... [Truncado a {max_chars} chars]"
         return content
     except Exception as e:
         return f"Error al intentar leer el archivo: {e}"
@@ -237,7 +212,7 @@ def list_mcp_servers() -> str:
 TOOL_REGISTRY: Dict[str, Callable] = {
     '[CALL_SEARCH': execute_search,
     '[CALL_PPLX': execute_perplexica,
-    '[CALL_EXEC': execute_code,
+    # '[CALL_EXEC' removed — arbitrary code execution disabled (SEC-01/GCP)
     '[CALL_READ': execute_read_file,
     '[CALL_MCP': execute_mcp,
     '[CALL_THINK': execute_think,
@@ -252,7 +227,7 @@ TOOL_INSTRUCTIONS = (
     "2. Para Búsqueda Web Rápida (SearxNG/Perplexica): `[CALL_PPLX: lo que quieres investigar profundamente]` (Recomendado para Sech/Investigación).\n"
     "3. Para Búsqueda Web Legacy (Opencode): `[CALL_SEARCH: lo que quieres buscar]`\n"
     "4. Para Leer un Archivo: `[CALL_READ: C:\\ruta\\absoluta\\al\\archivo.py]`\n"
-    "5. Para Ejecutar Código Python: `[CALL_EXEC: print('hola')]` (Entorno Windows nativo).\n"
+    "5. [CALL_EXEC deshabilitado en entorno GCP por seguridad]\n"
     "6. Para Herramientas MCP: `[CALL_MCP: servidor herramienta {\"arg\":\"val\"}]`\n"
     "7. Para Razonamiento Complejo (Especialista): `[CALL_THINK: prompt detallado con contexto para el Arquitecto Senior]`\n"
     "8. Para Delegar a Otro Agente (Topic): `[CALL_MSG: nombre_agente | mensaje o tarea detallada]`\n"

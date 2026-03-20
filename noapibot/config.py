@@ -103,6 +103,21 @@ BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 # ─── Rate Limiting ────────────────────────────────────
 MCP_COOLDOWN_SECONDS = float(os.environ.get("NOAPIBOT_MCP_COOLDOWN", "3.5"))
 
+# ─── Startup Secret Validation (SEC-05/GCP) ──────────
+# Fail fast if required secrets are missing — prevents silent failures in Cloud Run.
+_REQUIRED_SECRETS = {
+    "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+}
+
+def validate_secrets() -> None:
+    """Call at app startup. Raises RuntimeError if any required secret is missing."""
+    missing = [k for k, v in _REQUIRED_SECRETS.items() if not v]
+    if missing:
+        raise RuntimeError(
+            f"Secrets obligatorios no configurados: {missing}. "
+            "Configúralos en Secret Manager o en .env para desarrollo local."
+        )
+
 # ─── Antigravity Models ──────────────────────────────
 ANTIGRAVITY_MODELS = {
     "🟡 Flash": "google/antigravity-gemini-3-flash",
